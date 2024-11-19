@@ -1,0 +1,57 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main  # Trigger the workflow when code is pushed to the main branch
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest  # Run this job on an Ubuntu virtual machine
+    steps:
+      # Step 1: Checkout the Repository
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Step 3: Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}  # Your Docker Hub username
+          password: ${{ secrets.DOCKER_PASSWORD }}  # Your Docker Hub password
+
+      # Step 4: Build and Push Docker Image
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v3
+        with:
+          context: .  # Path to the Dockerfile
+          file: ./Dockerfile  # Dockerfile path
+          push: true  # Push image to Docker Hub
+          tags: ${{ secrets.DOCKER_USERNAME }}/wisecow:latest  # Image tag
+
+  deploy:
+    runs-on: ubuntu-latest  # Deploy after build_and_push job completes
+    needs: build_and_push  # Ensure build_and_push completes first
+    steps:
+      # Step 1: Install kubectl
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      # Step 2: Set up Kubernetes Config
+      - name: Configure Kubernetes
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" > ~/.kube/config
+
+      # Step 3: Deploy to Kubernetes
+      - name: Deploy Application
+        run: |
+          kubectl apply -f deployment.yaml
+          kubectl apply -f service.yaml
